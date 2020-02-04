@@ -73,6 +73,11 @@ set(TEST_FILES_DEBUG
   license.sql
 )
 
+if(USE_OPENSSL)
+  list(APPEND TEST_FILES_DEBUG
+    cert_keys.sql)
+endif()
+
 set(TEST_TEMPLATES
   compression_insert.sql.in
   continuous_aggs_union_view.sql.in

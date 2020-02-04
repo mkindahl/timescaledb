@@ -2,4 +2,9 @@ set(CERT_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/user.c
 )
 
+if(USE_OPENSSL)
+  list(APPEND CERT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/keygen.c)
+endif()
+
 target_sources(${TSL_LIBRARY_NAME} PRIVATE ${CERT_SOURCES})
