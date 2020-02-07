@@ -20,6 +20,7 @@ set(TEST_FILES
 set(TEST_FILES_DEBUG
   bgw_db_scheduler.sql
   bgw_reorder_drop_chunks.sql
+  cert_user.sql
   compress_bgw_reorder_drop_chunks.sql
   chunk_api.sql
   chunk_utils_compression.sql

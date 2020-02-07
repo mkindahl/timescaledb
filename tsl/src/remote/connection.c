@@ -40,6 +40,9 @@
 #include "connection.h"
 #include "debug_wait.h"
 #include "utils.h"
+#include "dist_util.h"
+#include "errors.h"
+#include "cert/user.h"
 
 /*
  * Connection library for TimescaleDB.
@@ -1095,76 +1098,6 @@ set_password_options(const char **keywords, const char **values, int *option_sta
 	*option_start = option_pos;
 }
 
-typedef enum PathKind
-{
-	PATH_KIND_CRT,
-	PATH_KIND_KEY
-} PathKind;
-
-/* Path description for human consumption */
-static const char *path_kind_text[PATH_KIND_KEY + 1] = {
-	[PATH_KIND_CRT] = "certificate",
-	[PATH_KIND_KEY] = "private key",
-};
-
-/* Path extension string for file system */
-static const char *path_kind_ext[PATH_KIND_KEY + 1] = {
-	[PATH_KIND_CRT] = "crt",
-	[PATH_KIND_KEY] = "key",
-};
-
-/*
- * Helper function to report error.
- *
- * This is needed to avoid code coverage reporting low coverage for error
- * cases in `make_user_path` that cannot be reached in normal situations.
- */
-static void
-report_path_error(PathKind path_kind, const char *user_name)
-{
-	elog(ERROR,
-		 "cannot write %s for user \"%s\": path too long",
-		 path_kind_text[path_kind],
-		 user_name);
-}
-
-/*
- * Make a user path with the given extension and user name in a portable and
- * safe manner.
- *
- * We use MD5 to compute a filename for the user name, which allows all forms
- * of user names. It is not necessary for the function to be cryptographically
- * secure, only to have a low risk of collisions, and MD5 is fast and with a
- * low risk of collisions.
- *
- * Will return the resulting path, or abort with an error.
- */
-static StringInfo
-make_user_path(const char *user_name, PathKind path_kind)
-{
-	char ret_path[MAXPGPATH];
-	char hexsum[33];
-	StringInfo result;
-
-	pg_md5_hash(user_name, strlen(user_name), hexsum);
-
-	if (strlcpy(ret_path, ts_guc_ssl_dir ? ts_guc_ssl_dir : DataDir, MAXPGPATH) > MAXPGPATH)
-		report_path_error(path_kind, user_name);
-	canonicalize_path(ret_path);
-
-	if (!ts_guc_ssl_dir)
-	{
-		join_path_components(ret_path, ret_path, EXTENSION_NAME);
-		join_path_components(ret_path, ret_path, "certs");
-	}
-
-	join_path_components(ret_path, ret_path, hexsum);
-
-	result = makeStringInfo();
-	appendStringInfo(result, "%s.%s", ret_path, path_kind_ext[path_kind]);
-	return result;
-}
-
 static void
 set_ssl_options(const char *user_name, const char **keywords, const char **values,
 				int *option_start)
@@ -1201,11 +1134,11 @@ set_ssl_options(const char *user_name, const char **keywords, const char **value
 	 * currently hardcoded. */
 
 	keywords[option_pos] = "sslcert";
-	values[option_pos] = make_user_path(user_name, PATH_KIND_CRT)->data;
+	values[option_pos] = ts_user_cert_path(user_name)->data;
 	option_pos++;
 
 	keywords[option_pos] = "sslkey";
-	values[option_pos] = make_user_path(user_name, PATH_KIND_KEY)->data;
+	values[option_pos] = ts_user_key_path(user_name)->data;
 	option_pos++;
 
 	*option_start = option_pos;
@@ -1953,8 +1886,8 @@ send_binary_copy_header(const TSConnection *conn, TSConnectionError *err)
 	/* File header for binary format */
 	static const char file_header[] = {
 		'P', 'G', 'C', 'O', 'P', 'Y', '\n', '\377', '\r', '\n', '\0', /* Signature */
-		0,   0,   0,   0,											  /* 4 bytes flags */
-		0,   0,   0,   0 /* 4 bytes header extension length (unused) */
+		0,	 0,	  0,   0,											  /* 4 bytes flags */
+		0,	 0,	  0,   0 /* 4 bytes header extension length (unused) */
 	};
 
 	int res = PQputCopyData(conn->pg_conn, file_header, sizeof(file_header));

@@ -1,0 +1,5 @@
+set(CERT_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/user.c
+)
+
+target_sources(${TSL_LIBRARY_NAME} PRIVATE ${CERT_SOURCES})
