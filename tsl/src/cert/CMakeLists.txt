@@ -4,6 +4,7 @@ set(CERT_SOURCES
 
 if(USE_OPENSSL)
   list(APPEND CERT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils.c
     ${CMAKE_CURRENT_SOURCE_DIR}/keygen.c)
 endif()
 

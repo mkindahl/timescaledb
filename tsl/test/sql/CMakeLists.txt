@@ -75,6 +75,7 @@ set(TEST_FILES_DEBUG
 
 if(USE_OPENSSL)
   list(APPEND TEST_FILES_DEBUG
+    cert_utils.sql
     cert_keys.sql)
 endif()
 
