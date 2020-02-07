@@ -99,6 +99,7 @@ configure_file(config.h.in config.h)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_subdirectory(bgw)
+add_subdirectory(cert)
 add_subdirectory(chunk_append)
 add_subdirectory(net)
 add_subdirectory(telemetry)

@@ -98,7 +98,11 @@ if (CMAKE_BUILD_TYPE MATCHES Debug)
     test_utils.sql
     timestamp_limits.sql
     with_clause_parser.sql
-  )
+    )
+  if (USE_OPENSSL)
+    list(APPEND TEST_FILES
+      cert_user.sql)
+  endif (USE_OPENSSL)
 endif (CMAKE_BUILD_TYPE MATCHES Debug)
 
 if(${PG_VERSION_MAJOR} EQUAL "12")

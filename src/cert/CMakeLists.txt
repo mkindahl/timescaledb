@@ -1,0 +1,7 @@
+set(OPENSSL_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/user.c
+)
+
+if(USE_OPENSSL)
+  target_sources(${PROJECT_NAME} PRIVATE ${OPENSSL_SOURCES})
+endif()
