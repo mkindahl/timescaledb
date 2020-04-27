@@ -7,6 +7,8 @@
 \set DATA_NODE_2 :TEST_DBNAME _2
 
 \ir include/remote_exec.sql
+\ir include/views.sql
+
 GRANT CREATE ON DATABASE :"TEST_DBNAME" TO :ROLE_DEFAULT_PERM_USER;
 SET ROLE :ROLE_DEFAULT_PERM_USER;
 
@@ -518,3 +520,35 @@ DROP TABLESPACE tablespace1;
 DROP TABLESPACE tablespace2;
 SET client_min_messages = NOTICE;
 \c :TEST_DBNAME :ROLE_DEFAULT_PERM_USER
+
+-- Test drop_chunk functions
+CREATE TABLE conditions(
+    time TIMESTAMPTZ NOT NULL,
+    device INTEGER,
+    temperature FLOAT
+);
+SELECT * FROM create_hypertable('conditions', 'time',
+       chunk_time_interval => INTERVAL '1 day');
+
+INSERT INTO conditions
+SELECT time, (random()*30)::int, random()*80 - 40
+FROM generate_series(TIMESTAMPTZ '2018-01-01 05:00:00Z',
+                     TIMESTAMPTZ '2018-04-01 05:00:00Z', '20 hours') AS time;
+
+SELECT COUNT(*) FROM test_info.chunks_tstz WHERE hypertable_oid = 'conditions'::regclass;
+
+-- Checking that we do not have any duplicates. If so, the query below
+-- will fail with strange errors.
+SELECT chunk_oid, COUNT(*)
+  FROM test_info.chunks_tstz
+ WHERE time_range << TIMESTAMPTZ '2018-02-01 05:00:00Z'
+ GROUP BY chunk_oid HAVING COUNT(*) > 1;
+
+SELECT COUNT(drop_chunk(chunk_oid))
+  FROM test_info.chunks_tstz
+ WHERE hypertable_oid = 'conditions'::regclass
+   AND time_range << TIMESTAMPTZ '2018-02-01 05:00:00Z' ;
+
+SELECT COUNT(*) FROM test_info.chunks_tstz WHERE hypertable_oid = 'conditions'::regclass;
+
+DROP TABLE conditions;
