@@ -46,6 +46,7 @@
 #include <parser/parse_type.h>
 #include <rewrite/rewriteHandler.h>
 #include <rewrite/rewriteManip.h>
+#include <utils/rel.h>
 #include <utils/builtins.h>
 #include <utils/catcache.h>
 #include <utils/int8.h>
@@ -1851,16 +1852,26 @@ cagg_update_view_definition(ContinuousAgg *agg, Hypertable *mat_ht,
 									   mat_ht->fd.id);
 
 	/*
-	 * adjust names in the targetlist of the updated view to match the view definition
+	 * When calling StoreViewQuery the target list names of the query have to
+	 * match the relation descriptor name, but if a column of the continuous
+	 * aggregate has been renamed, the query tree will not have the correct
+	 * names in the target list, which will error out when calling
+	 * StoreViewQuery. For that reason, we fetch the name from the user view
+	 * relation and update the resource name in the query target list to match
+	 * the name in the user view.
 	 */
 	Assert(list_length(view_query->targetList) == list_length(user_query->targetList));
 
+	TupleDesc desc = RelationGetDescr(user_view_rel);
+	int i = 0;
 	forboth (lc1, view_query->targetList, lc2, user_query->targetList)
 	{
 		TargetEntry *view_tle, *user_tle;
+		FormData_pg_attribute *attr = TupleDescAttr(desc, i);
 		view_tle = lfirst_node(TargetEntry, lc1);
 		user_tle = lfirst_node(TargetEntry, lc2);
-		view_tle->resname = user_tle->resname;
+		view_tle->resname = user_tle->resname = NameStr(attr->attname);
+		++i;
 	}
 
 	/* keep locks until end of transaction */
