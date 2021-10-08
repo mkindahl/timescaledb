@@ -1,8 +1,33 @@
 # Release pipeline
 #
-# This release pipeline does a release with the contents of the
-# branch that you select when running the workflow. 
-
+# This release pipeline does a release with the contents of the branch
+# that you select when running the workflow. Right now it only tags
+# the release and triggers the release procedure in the other
+# repositories and expect that you have added a changelog already.
+#
+# We could trigger this on a tagging event, but since this is still
+# experimental, we will trigger it manually for now. This will allow
+# us to do a dry-run first, check that it looks good, and then trigger
+# a real release.
+#
+# The release can be triggered either through the GitHub web interface
+# or using the GitHub CLI. To release 2.1.5 using the 2.1.x branch,
+# you would have to do.
+#
+#     gh workflow run --ref 2.1.x version=2.1.5 publish-artifacts=true release.yaml
+#
+# The following secrets are used in the workflow.
+#
+# SLACK_BOT_TOKEN
+#    OAuth token for the application that will write the message.
+# SLACK_CHANNEL_RELEASE
+#    Channel identifier for channel where the release thread should be
+#    created.
+# SLACK_CHANNEL_FEED_EXPERIMENTAL
+#    Experimental Slack channel
+# RELEASE_ACCESS_TOKEN
+#    Company-wide repository access token. Used to send repository
+#    dispatch events to other repositories.
 name: Release TimescaleDB
 on:
   workflow_dispatch:
@@ -10,7 +35,7 @@ on:
       version:
         description: 'Version to release'
         required: true
-      publish-artifacts:
+      publish:
         description: 'Publish all artifacts'
         required: false
         default: false
@@ -35,4 +60,129 @@ jobs:
         shell: bash -x {0}
         run: |
           tag=$(git describe --tags --abbrev=0 $GITHUB_REF)
-          git log $tag..
+          git log --oneline --decorate $tag..
+
+  tag-release:
+    needs: check-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout TimescaleDB
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Get some info
+        run: |
+          whoami
+          echo "${{ toJSON(github) }}"
+          echo "GITHUB_ACTOR: ${GITHUB_ACTOR}"
+          echo "GITHUB_REPOSITORY: ${GITHUB_REPOSITORY}"
+
+      - name: Tag version
+        run: |
+          git config --local user.email "release@timescale.com"
+          git config --local user.name "Timescale"
+          git tag -a ${{ github.event.inputs.version }}  -m "${{ github.event.inputs.version }}"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+          tags: true
+
+  release-homebrew:
+    needs: tag-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Homebrew
+        uses: aurelien-baudet/workflow-dispatch@v2
+        with:
+          workflow: homebrew.yaml
+          repo: timescale/release-build-scripts
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inputs: |
+            {
+              "version": "${{ github.event.inputs.version }}"
+              "upload-artifacts": "${{ github.event.inputs.publish }}"
+            }
+      - name: Notify that release was done
+        id: slack
+        uses: slackapi/slack-github-action@v1.14.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_FEED_EXPERIMENTAL }}
+          slack-message: 'Homebrew version ${{ github.event.inputs.version }} released!'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  release-debian:
+    needs: tag-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Debian
+        uses: aurelien-baudet/workflow-dispatch@v2
+        with:
+          workflow: release.yaml
+          repo: timescale/release-build-scripts
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inputs: |
+            {
+              "version": "${{ github.event.inputs.version }}"
+              "upload-artifacts": "${{ github.event.inputs.publish }}"
+            }
+      - name: Notify that release was done
+        id: slack
+        uses: slackapi/slack-github-action@v1.14.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_FEED_EXPERIMENTAL }}
+          slack-message: 'Debian package version ${{ steps.read_version.outputs.version }} released!'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  release-rpm:
+    needs: tag-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Debian
+        uses: aurelien-baudet/workflow-dispatch@v2
+        with:
+          workflow: rpm.yaml
+          repo: timescale/release-build-scripts
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inputs: |
+            {
+              "version": "${{ github.event.inputs.version }}"
+              "upload-artifacts": "${{ github.event.inputs.publish }}"
+            }
+      - name: Notify that release was done
+        id: slack
+        uses: slackapi/slack-github-action@v1.14.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_FEED_EXPERIMENTAL }}
+          slack-message: 'RPM package version ${{ github.event.inputs.version }} released!'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  release-docker:
+    needs: tag-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Debian
+        uses: aurelien-baudet/workflow-dispatch@v2
+        with:
+          workflow: docker-image.yml
+          repo: timescale/timescaledb-docker
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inputs: |
+            {
+              "version": "${{ github.event.inputs.version }}"
+              "upload-artifacts": "${{ github.event.inputs.publish }}"
+            }
+      - name: Notify that release was done
+        id: slack
+        uses: slackapi/slack-github-action@v1.14.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_FEED_EXPERIMENTAL }}
+          slack-message: 'Docker image ${{ github.event.inputs.version }} released!'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
