@@ -332,6 +332,17 @@ get_hypercube_from_slices(Jsonb *slices, const Hypertable *ht)
 	return hc;
 }
 
+/**
+ * Get the chunk status.
+ */
+Datum
+chunk_status(PG_FUNCTION_ARGS)
+{
+	Oid chunk_relid = PG_GETARG_OID(0);
+	Chunk *chunk = ts_chunk_get_by_relid(chunk_relid, /* fail_if_not_found */ true);
+	PG_RETURN_INT32(chunk->fd.status);
+}
+
 /*
  * Create a chunk and its metadata.
  *

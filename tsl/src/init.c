@@ -176,6 +176,7 @@ CrossModuleFunctions tsl_cm_functions = {
 	.data_node_block_new_chunks = data_node_block_new_chunks,
 	.chunk_set_default_data_node = chunk_set_default_data_node,
 	.show_chunk = chunk_show,
+	.chunk_status = chunk_status,
 	.create_chunk = chunk_create,
 	.create_chunk_on_data_nodes = chunk_api_create_on_data_nodes,
 	.chunk_drop_replica = chunk_drop_replica,

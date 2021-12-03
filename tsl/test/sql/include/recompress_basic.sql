@@ -55,7 +55,7 @@ WHERE hypertable_name = 'test2' \gset
 
 SELECT count(*) from test2;
 
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass);
+CALL recompress_chunk(:'CHUNK_NAME'::regclass);
 
 SELECT chunk_status,
        chunk_name as "CHUNK_NAME"
@@ -92,12 +92,12 @@ WHERE hypertable_name = 'test2' ORDER BY chunk_name;
 
 \set ON_ERROR_STOP 0
 -- call recompress_chunk when status is not unordered
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass, true);
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass, false);
+CALL recompress_chunk(:'CHUNK_NAME'::regclass, true);
+CALL recompress_chunk(:'CHUNK_NAME'::regclass, false);
 
 --now decompress it , then try and recompress
 SELECT decompress_chunk(:'CHUNK_NAME'::regclass);
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass);
+CALL recompress_chunk(:'CHUNK_NAME'::regclass);
 \set ON_ERROR_STOP 1
 
 -- test recompress policy

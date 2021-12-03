@@ -413,12 +413,7 @@ SELECT count(*) from test2;
     29
 (1 row)
 
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass);
-             recompress_chunk             
-------------------------------------------
- _timescaledb_internal._hyper_14_62_chunk
-(1 row)
-
+CALL recompress_chunk(:'CHUNK_NAME'::regclass);
 SELECT chunk_status,
        chunk_name as "CHUNK_NAME"
 FROM compressed_chunk_info_view
@@ -473,15 +468,10 @@ WHERE hypertable_name = 'test2' ORDER BY chunk_name;
 
 \set ON_ERROR_STOP 0
 -- call recompress_chunk when status is not unordered
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass, true);
-psql:include/recompress_basic.sql:95: NOTICE:  nothing to recompress in chunk "_hyper_14_62_chunk" 
- recompress_chunk 
-------------------
- 
-(1 row)
-
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass, false);
-psql:include/recompress_basic.sql:96: ERROR:  nothing to recompress in chunk "_hyper_14_62_chunk" 
+CALL recompress_chunk(:'CHUNK_NAME'::regclass, true);
+psql:include/recompress_basic.sql:95: NOTICE:  nothing to recompress in chunk "_hyper_14_62_chunk"
+CALL recompress_chunk(:'CHUNK_NAME'::regclass, false);
+psql:include/recompress_basic.sql:96: ERROR:  nothing to recompress in chunk "_hyper_14_62_chunk"
 --now decompress it , then try and recompress
 SELECT decompress_chunk(:'CHUNK_NAME'::regclass);
              decompress_chunk             
@@ -489,7 +479,7 @@ SELECT decompress_chunk(:'CHUNK_NAME'::regclass);
  _timescaledb_internal._hyper_14_62_chunk
 (1 row)
 
-SELECT recompress_chunk(:'CHUNK_NAME'::regclass);
+CALL recompress_chunk(:'CHUNK_NAME'::regclass);
 psql:include/recompress_basic.sql:100: ERROR:  call compress_chunk instead of recompress_chunk
 \set ON_ERROR_STOP 1
 -- test recompress policy
