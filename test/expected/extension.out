@@ -36,6 +36,7 @@ WHERE oid IN (
  create_distributed_hypertable
  create_distributed_restore_point
  create_hypertable
+ debug_waitpoint_wait
  decompress_chunk
  delete_data_node
  delete_job
@@ -76,5 +77,5 @@ WHERE oid IN (
  timescaledb_fdw_validator
  timescaledb_post_restore
  timescaledb_pre_restore
-(57 rows)
+(58 rows)
 

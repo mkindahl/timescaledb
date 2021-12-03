@@ -21,6 +21,7 @@
 
 TS_FUNCTION_INFO_V1(ts_debug_point_enable);
 TS_FUNCTION_INFO_V1(ts_debug_point_release);
+TS_FUNCTION_INFO_V1(ts_debug_point_wait);
 TS_FUNCTION_INFO_V1(ts_debug_point_id);
 
 /*
@@ -143,6 +144,21 @@ ts_debug_point_release(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/**
+ * Set a debug waitpoint in SQL code.
+ */
+Datum
+ts_debug_point_wait(PG_FUNCTION_ARGS)
+{
+	text *name = PG_GETARG_TEXT_PP(0);
+
+	if (PG_ARGISNULL(0))
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), errmsg("no name provided")));
+
+	ts_debug_point_wait_internal(text_to_cstring(name), /* blocking */ true);
+	PG_RETURN_VOID();
+}
+
 /*
  * Get the debug point identifier from the name.
  */
@@ -171,7 +187,7 @@ ts_debug_point_id(PG_FUNCTION_ARGS)
  * where interrupts are not being served currently.
  */
 void
-ts_debug_point_wait(const char *name, bool blocking)
+ts_debug_point_wait_internal(const char *name, bool blocking)
 {
 	DebugPoint point;
 	LockAcquireResult lock_acquire_result pg_attribute_unused();

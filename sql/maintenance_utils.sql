@@ -29,6 +29,9 @@ CREATE OR REPLACE FUNCTION decompress_chunk(
     if_compressed BOOLEAN = false
 ) RETURNS REGCLASS AS '@MODULE_PATHNAME@', 'ts_decompress_chunk' LANGUAGE C STRICT VOLATILE;
 
+CREATE OR REPLACE PROCEDURE debug_waitpoint_wait(TEXT)
+LANGUAGE C AS '@MODULE_PATHNAME@', 'ts_debug_point_wait';
+
 CREATE OR REPLACE PROCEDURE recompress_chunk(chunk REGCLASS, if_not_compressed BOOLEAN = false) AS $$
 DECLARE
   status INT;
@@ -42,14 +45,15 @@ BEGIN
     CASE status
     WHEN 3 THEN
         PERFORM decompress_chunk(chunk);
+        CALL debug_waitpoint_wait('recompress_after_decompress');
         COMMIT;
     WHEN 1 THEN
         IF if_not_compressed THEN
             RAISE NOTICE 'nothing to recompress in chunk "%"', chunk_name[2];
-    	    RETURN;
-	ELSE
-	    RAISE EXCEPTION 'nothing to recompress in chunk "%"', chunk_name[2];
-	END IF;
+            RETURN;
+        ELSE
+            RAISE EXCEPTION 'nothing to recompress in chunk "%"', chunk_name[2];
+        END IF;
     WHEN 0 THEN
         RAISE EXCEPTION 'call compress_chunk instead of recompress_chunk';
     END CASE;
