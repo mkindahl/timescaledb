@@ -77,6 +77,11 @@ typedef struct Point
 	(USECS_PER_DAY) /* 1 day with adaptive                                                         \
 					 * chunking enabled */
 
+/* Default intervals for integer types */
+#define DEFAULT_SMALLINT_INTERVAL 10000
+#define DEFAULT_INT_INTERVAL 100000
+#define DEFAULT_BIGINT_INTERVAL 1000000
+
 typedef struct Hypertable Hypertable;
 
 /*

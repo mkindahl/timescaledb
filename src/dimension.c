@@ -46,6 +46,18 @@ enum Anum_add_dimension
 
 #define Natts_add_dimension (_Anum_add_dimension_max - 1)
 
+/*
+ * Generic add dimension attributes
+ */
+enum Anum_generic_add_dimension
+{
+	Anum_generic_add_dimension_id = 1,
+	Anum_generic_add_dimension_created,
+	_Anum_generic_add_dimension_max,
+};
+
+#define Natts_generic_add_dimension (_Anum_generic_add_dimension_max - 1)
+
 static int
 cmp_dimension_id(const void *left, const void *right)
 {
@@ -1032,6 +1044,42 @@ get_validated_integer_interval(Oid dimtype, int64 value)
 	return value;
 }
 
+/*
+ * Get the default chunk interval based on dimension type.
+ */
+static int64
+get_default_interval(Oid dimtype, bool adaptive_chunking)
+{
+	int64 interval;
+
+	switch (dimtype)
+	{
+		case INT2OID:
+			interval = DEFAULT_SMALLINT_INTERVAL;
+			break;
+		case INT4OID:
+			interval = DEFAULT_INT_INTERVAL;
+			break;
+		case INT8OID:
+			interval = DEFAULT_BIGINT_INTERVAL;
+			break;
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+		case DATEOID:
+			interval = adaptive_chunking ? DEFAULT_CHUNK_TIME_INTERVAL_ADAPTIVE :
+										   DEFAULT_CHUNK_TIME_INTERVAL;
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("cannot get default interval for %s dimension",
+							format_type_be(dimtype)),
+					 errhint("Use a valid dimension type.")));
+	}
+
+	return interval;
+}
+
 static int64
 dimension_interval_to_internal(const char *colname, Oid dimtype, Oid valuetype, Datum value,
 							   bool adaptive_chunking)
@@ -1046,13 +1094,7 @@ dimension_interval_to_internal(const char *colname, Oid dimtype, Oid valuetype, 
 
 	if (!OidIsValid(valuetype))
 	{
-		if (IS_INTEGER_TYPE(dimtype))
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("integer dimensions require an explicit interval")));
-
-		value = Int64GetDatum(adaptive_chunking ? DEFAULT_CHUNK_TIME_INTERVAL_ADAPTIVE :
-												  DEFAULT_CHUNK_TIME_INTERVAL);
+		value = Int64GetDatum(get_default_interval(dimtype, adaptive_chunking));
 		valuetype = INT8OID;
 	}
 
@@ -1121,7 +1163,7 @@ dimension_add_not_null_on_column(Oid table_relid, char *colname)
 
 	ereport(NOTICE,
 			(errmsg("adding not-null constraint to column \"%s\"", colname),
-			 errdetail("Time dimensions cannot have NULL values.")));
+			 errdetail("Dimensions cannot have NULL values.")));
 
 	ts_alter_table_with_event_trigger(table_relid, (Node *) &cmd, list_make1(&cmd), false);
 }
@@ -1476,12 +1518,10 @@ ts_dimension_add_from_info(DimensionInfo *info)
  * Create a datum to be returned by add_dimension DDL function
  */
 static Datum
-dimension_create_datum(FunctionCallInfo fcinfo, DimensionInfo *info)
+dimension_create_datum(FunctionCallInfo fcinfo, DimensionInfo *info, bool is_generic)
 {
 	TupleDesc tupdesc;
 	HeapTuple tuple;
-	Datum values[Natts_add_dimension];
-	bool nulls[Natts_add_dimension] = { false };
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		ereport(ERROR,
@@ -1490,19 +1530,35 @@ dimension_create_datum(FunctionCallInfo fcinfo, DimensionInfo *info)
 						"context that cannot accept type record")));
 
 	tupdesc = BlessTupleDesc(tupdesc);
-	values[AttrNumberGetAttrOffset(Anum_add_dimension_id)] = info->dimension_id;
-	values[AttrNumberGetAttrOffset(Anum_add_dimension_schema_name)] =
-		NameGetDatum(&info->ht->fd.schema_name);
-	values[AttrNumberGetAttrOffset(Anum_add_dimension_table_name)] =
-		NameGetDatum(&info->ht->fd.table_name);
-	values[AttrNumberGetAttrOffset(Anum_add_dimension_column_name)] = NameGetDatum(info->colname);
-	values[AttrNumberGetAttrOffset(Anum_add_dimension_created)] = BoolGetDatum(!info->skip);
-	tuple = heap_form_tuple(tupdesc, values, nulls);
+
+	if (is_generic)
+	{
+		Datum values[Natts_generic_add_dimension];
+		bool nulls[Natts_generic_add_dimension] = { false };
+
+		values[AttrNumberGetAttrOffset(Anum_generic_add_dimension_id)] = info->dimension_id;
+		values[AttrNumberGetAttrOffset(Anum_generic_add_dimension_created)] =
+			BoolGetDatum(!info->skip);
+		tuple = heap_form_tuple(tupdesc, values, nulls);
+	}
+	else
+	{
+		Datum values[Natts_add_dimension];
+		bool nulls[Natts_add_dimension] = { false };
+
+		values[AttrNumberGetAttrOffset(Anum_add_dimension_id)] = info->dimension_id;
+		values[AttrNumberGetAttrOffset(Anum_add_dimension_schema_name)] =
+			NameGetDatum(&info->ht->fd.schema_name);
+		values[AttrNumberGetAttrOffset(Anum_add_dimension_table_name)] =
+			NameGetDatum(&info->ht->fd.table_name);
+		values[AttrNumberGetAttrOffset(Anum_add_dimension_column_name)] =
+			NameGetDatum(info->colname);
+		values[AttrNumberGetAttrOffset(Anum_add_dimension_created)] = BoolGetDatum(!info->skip);
+		tuple = heap_form_tuple(tupdesc, values, nulls);
+	}
 
 	return HeapTupleGetDatum(tuple);
 }
-
-TS_FUNCTION_INFO_V1(ts_dimension_add);
 
 /*
  * Add a new dimension to a hypertable.
@@ -1515,8 +1571,8 @@ TS_FUNCTION_INFO_V1(ts_dimension_add);
  * 4. Partitioning function
  * 5. IF NOT EXISTS option (bool)
  */
-Datum
-ts_dimension_add(PG_FUNCTION_ARGS)
+static Datum
+ts_dimension_add_internal(PG_FUNCTION_ARGS, bool is_generic)
 {
 	Cache *hcache;
 	DimensionInfo info = {
@@ -1648,10 +1704,25 @@ ts_dimension_add(PG_FUNCTION_ARGS)
 
 	ts_hypertable_func_call_on_data_nodes(info.ht, fcinfo);
 
-	retval = dimension_create_datum(fcinfo, &info);
+	retval = dimension_create_datum(fcinfo, &info, is_generic);
 	ts_cache_release(hcache);
 
 	PG_RETURN_DATUM(retval);
+}
+
+TS_FUNCTION_INFO_V1(ts_dimension_add);
+TS_FUNCTION_INFO_V1(ts_dimension_add_general);
+
+Datum
+ts_dimension_add(PG_FUNCTION_ARGS)
+{
+	return ts_dimension_add_internal(fcinfo, false);
+}
+
+Datum
+ts_dimension_add_general(PG_FUNCTION_ARGS)
+{
+	return ts_dimension_add_internal(fcinfo, true);
 }
 
 /* Used as a tuple found function */
