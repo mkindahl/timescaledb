@@ -29,6 +29,7 @@ set(PRE_INSTALL_FUNCTION_FILES
 set(SOURCE_FILES
     hypertable.sql
     chunk.sql
+	compression.sql
     data_node.sql
     ddl_internal.sql
     ddl_experimental.sql

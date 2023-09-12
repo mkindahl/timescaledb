@@ -959,10 +959,11 @@ row_compressor_init(RowCompressor *row_compressor, TupleDesc uncompressed_tuple_
 								   row_compressor->n_input_columns);
 }
 
-void
+int64
 row_compressor_append_sorted_rows(RowCompressor *row_compressor, Tuplesortstate *sorted_rel,
 								  TupleDesc sorted_desc)
 {
+	int64 count = 0;
 	CommandId mycid = GetCurrentCommandId(true);
 	TupleTableSlot *slot = MakeTupleTableSlot(sorted_desc, &TTSOpsMinimalTuple);
 	bool got_tuple;
@@ -980,12 +981,15 @@ row_compressor_append_sorted_rows(RowCompressor *row_compressor, Tuplesortstate 
 											NULL /*=abbrev*/))
 	{
 		row_compressor_process_ordered_slot(row_compressor, slot, mycid);
+		count++;
 	}
 
 	if (row_compressor->rows_compressed_into_current_value > 0)
 		row_compressor_flush(row_compressor, mycid, true);
 
 	ExecDropSingleTupleTableSlot(slot);
+
+	return count;
 }
 
 static void

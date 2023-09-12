@@ -8,8 +8,12 @@
 #include <commands/event_trigger.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_trigger.h>
+#include <commands/tablecmds.h>
+#include <nodes/nodes.h>
+#include <nodes/parsenodes.h>
 
 #include "compression/create.h"
+#include "compression/compressionam_handler.h"
 #include "continuous_aggs/create.h"
 #include "ts_catalog/continuous_agg.h"
 #include "hypertable_cache.h"
@@ -21,11 +25,45 @@
 void
 tsl_ddl_command_start(ProcessUtilityArgs *args)
 {
-	if (IsA(args->parsetree, DropdbStmt))
+	switch (nodeTag(args->parsetree))
 	{
-		DropdbStmt *stmt = castNode(DropdbStmt, args->parsetree);
-		remote_connection_cache_dropped_db_callback(stmt->dbname);
+		case T_AlterTableStmt:
+		{
+			AlterTableStmt *stmt = castNode(AlterTableStmt, args->parsetree);
+			ListCell *lc;
+
+			foreach (lc, stmt->cmds)
+			{
+				AlterTableCmd *cmd = lfirst_node(AlterTableCmd, lc);
+
+				switch (cmd->subtype)
+				{
+#if PG15_GE
+					case AT_SetAccessMethod:
+						if (strcmp(cmd->name, "tscompression") == 0)
+						{
+							Oid relid = AlterTableLookupRelation(stmt, NoLock);
+							compressionam_handler_start_conversion(relid);
+						}
+						break;
+#endif
+					default:
+						break;
+				}
+			}
+
+			break;
+		}
+		case T_DropdbStmt:
+		{
+			DropdbStmt *stmt = castNode(DropdbStmt, args->parsetree);
+			remote_connection_cache_dropped_db_callback(stmt->dbname);
+			break;
+		}
+		default:
+			break;
 	}
+
 	dist_ddl_start(args);
 }
 

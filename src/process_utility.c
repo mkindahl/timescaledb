@@ -163,6 +163,10 @@ check_chunk_alter_table_operation_allowed(Oid relid, AlterTableStmt *stmt)
 				case AT_ReAddStatistics:
 				case AT_SetCompression:
 #endif
+#if PG15_GE
+
+				case AT_SetAccessMethod:
+#endif
 					/* allowed on chunks */
 					break;
 				default:

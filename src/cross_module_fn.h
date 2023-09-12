@@ -155,6 +155,7 @@ typedef struct CrossModuleFunctions
 	PGFunction dictionary_compressor_finish;
 	PGFunction array_compressor_append;
 	PGFunction array_compressor_finish;
+	PGFunction compressionam_handler;
 
 	PGFunction data_node_add;
 	PGFunction data_node_delete;
