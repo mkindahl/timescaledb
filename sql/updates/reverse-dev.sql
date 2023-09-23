@@ -274,6 +274,5 @@ ALTER FUNCTION _timescaledb_functions.partialize_agg(anyelement) SET SCHEMA _tim
 ALTER AGGREGATE _timescaledb_functions.finalize_agg(text,name,name,name[][],bytea,anyelement) SET SCHEMA _timescaledb_internal;
 
 -- API changes related to hypertable generalization
-DROP FUNCTION IF EXISTS timescaledb_experimental.create_hypertable;
-DROP FUNCTION IF EXISTS timescaledb_experimental.add_dimension;
-DROP FUNCTION IF EXISTS timescaledb_experimental.set_partitioning_interval;
+DROP FUNCTION IF EXISTS @extschema@.convert_to_hypertable;
+DROP FUNCTION IF EXISTS @extschema@.set_partitioning_interval;

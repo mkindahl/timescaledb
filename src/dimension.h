@@ -84,14 +84,21 @@ typedef struct Point
 
 typedef struct Hypertable Hypertable;
 
-/*
+/**
  * Dimension information used to validate, create and update dimensions.
+ *
+ * This structure is used both partially filled in from the dimension info
+ * constructors as well as when building dimension info for the storage into
+ * the dimension table.
+ *
+ * @see ts_hash_dimension
+ * @see ts_range_dimension
  */
 typedef struct DimensionInfo
 {
 	Oid table_relid;
 	int32 dimension_id;
-	Name colname;
+	NameData colname;
 	Oid coltype;
 	DimensionType type;
 	Datum interval_datum;
@@ -107,8 +114,8 @@ typedef struct DimensionInfo
 	Hypertable *ht;
 } DimensionInfo;
 
-#define DIMENSION_INFO_IS_SET(di)                                                                  \
-	(di != NULL && OidIsValid((di)->table_relid) && (di)->colname != NULL)
+#define DIMENSION_INFO_IS_SET(di) (di != NULL && OidIsValid((di)->table_relid))
+#define DIMENSION_INFO_IS_VALID(di) (info->num_slices_is_set || OidIsValid(info->interval_type))
 
 extern Hyperspace *ts_dimension_scan(int32 hypertable_id, Oid main_table_relid, int16 num_dimension,
 									 MemoryContext mctx);

@@ -4,7 +4,7 @@
 
 -- Validate generalized hypertable for smallint
 CREATE TABLE test_table_smallint(id SMALLINT, device INTEGER, time TIMESTAMPTZ);
-SELECT timescaledb_experimental.create_hypertable('test_table_smallint', 'id');
+SELECT create_hypertable('test_table_smallint', ByRange('id'));
 
 -- default interval
 SELECT integer_interval FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_table_smallint';
@@ -20,7 +20,7 @@ SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name='test_
 
 -- Validate generalized hypertable for int
 CREATE TABLE test_table_int(id INTEGER, device INTEGER, time TIMESTAMPTZ);
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id');
+SELECT create_hypertable('test_table_int', ByRange('id'));
 
 -- Default interval
 SELECT integer_interval FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_table_int';
@@ -36,7 +36,7 @@ SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name='test_
 
 -- Validate generalized hypertable for bigint
 CREATE TABLE test_table_bigint(id BIGINT, device INTEGER, time TIMESTAMPTZ);
-SELECT timescaledb_experimental.create_hypertable('test_table_bigint', 'id');
+SELECT create_hypertable('test_table_bigint', ByRange('id'));
 
 -- Default interval
 SELECT integer_interval FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_table_bigint';
@@ -56,7 +56,7 @@ DROP TABLE test_table_bigint;
 
 -- Create hypertable with SERIAL column
 CREATE TABLE jobs_serial (job_id SERIAL, device_id INTEGER, start_time TIMESTAMPTZ, end_time TIMESTAMPTZ, PRIMARY KEY (job_id));
-SELECT timescaledb_experimental.create_hypertable('jobs_serial', 'job_id', partition_interval => 30);
+SELECT create_hypertable('jobs_serial', ByRange('job_id', partition_interval => 30));
 
 -- Insert data
 INSERT INTO jobs_serial (device_id, start_time, end_time)
@@ -86,7 +86,7 @@ DROP TABLE jobs_serial;
 
 -- Create and validate hypertable with BIGSERIAL column
 CREATE TABLE jobs_big_serial (job_id BIGSERIAL, device_id INTEGER, start_time TIMESTAMPTZ, end_time TIMESTAMPTZ, PRIMARY KEY (job_id));
-SELECT timescaledb_experimental.create_hypertable('jobs_big_serial', 'job_id', partition_interval => 100);
+SELECT create_hypertable('jobs_big_serial', ByRange('job_id', 100));
 
 -- Insert data
 INSERT INTO jobs_big_serial (device_id, start_time, end_time)
@@ -143,7 +143,7 @@ END
 $BODY$;
 
 CREATE TABLE test_table_int(id TEXT, device INTEGER, time TIMESTAMPTZ);
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_func => 'part_func', partition_interval => 10);
+SELECT create_hypertable('test_table_int', ByRange('id', 10, partition_func => 'part_func'));
 
 INSERT INTO test_table_int VALUES('1', 1, '01-01-2023 11:00'::TIMESTAMPTZ);
 INSERT INTO test_table_int VALUES('10', 10, '01-01-2023 11:00'::TIMESTAMPTZ);
@@ -158,7 +158,7 @@ DROP FUNCTION part_func;
 CREATE TABLE test_table_int(id INTEGER, device INTEGER, time TIMESTAMPTZ);
 INSERT INTO test_table_int SELECT t, t%10, '01-01-2023 11:00'::TIMESTAMPTZ FROM generate_series(1, 50, 1) t;
 
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_interval => 10, migrate_data => true);
+SELECT create_hypertable('test_table_int', ByRange('id', 10), migrate_data => true);
 
 SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name = 'test_table_int';
 
@@ -167,7 +167,7 @@ DROP TABLE test_table_int;
 -- Create default indexes
 CREATE TABLE test_table_int(id INTEGER, device INTEGER, time TIMESTAMPTZ);
 
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_interval => 10, create_default_indexes => false);
+SELECT create_hypertable('test_table_int', ByRange('id', 10), create_default_indexes => false);
 
 SELECT indexname FROM pg_indexes WHERE tablename = 'test_table_int';
 
@@ -176,33 +176,33 @@ DROP TABLE test_table_int;
 -- if_not_exists
 CREATE TABLE test_table_int(id INTEGER, device INTEGER, time TIMESTAMPTZ);
 
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_interval => 10);
+SELECT create_hypertable('test_table_int', ByRange('id', 10));
 
 -- No error when if_not_exists => true
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_interval => 10, if_not_exists => true);
+SELECT create_hypertable('test_table_int', ByRange('id', 10), if_not_exists => true);
 SELECT * FROM _timescaledb_functions.get_create_command('test_table_int');
 
 -- Should throw an error when if_not_exists is not set
 \set ON_ERROR_STOP 0
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_interval => 10);
+SELECT create_hypertable('test_table_int', ByRange('id', 10));
 \set ON_ERROR_STOP 1
 
 DROP TABLE test_table_int;
 
 -- Add dimension
 CREATE TABLE test_table_int(id INTEGER, device INTEGER, time TIMESTAMPTZ);
-SELECT timescaledb_experimental.create_hypertable('test_table_int', 'id', partition_interval => 10, migrate_data => true);
+SELECT create_hypertable('test_table_int', ByRange('id', 10), migrate_data => true);
 
 INSERT INTO test_table_int SELECT t, t%10, '01-01-2023 11:00'::TIMESTAMPTZ FROM generate_series(1, 50, 1) t;
 
-SELECT timescaledb_experimental.add_dimension('test_table_int', 'device', partition_interval => 2);
+SELECT add_dimension('test_table_int', ByRange('device', partition_interval => 2));
 
 SELECT hypertable_name, dimension_number, column_name FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_table_int';
 
 SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name='test_table_int';
 
 -- set_partitioning_interval
-SELECT timescaledb_experimental.set_partitioning_interval('test_table_int', 5, 'device');
+SELECT set_partitioning_interval('test_table_int', 5, 'device');
 
 SELECT integer_interval FROM timescaledb_information.dimensions WHERE column_name='device';
 
@@ -210,7 +210,7 @@ DROP TABLE test_table_int;
 
 -- Hypertable with time dimension using new API
 CREATE TABLE test_time(time TIMESTAMP NOT NULL, device INT, temp FLOAT);
-SELECT timescaledb_experimental.create_hypertable('test_time', 'time');
+SELECT create_hypertable('test_time', ByRange('time'));
 
 -- Default interval
 SELECT time_interval FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_time';
@@ -219,11 +219,11 @@ INSERT INTO test_time SELECT t, (abs(timestamp_hash(t::timestamp)) % 10) + 1, 0.
 
 SELECT count(*) FROM timescaledb_information.chunks WHERE hypertable_name='test_time';
 
-SELECT timescaledb_experimental.add_dimension('test_time', 'device', partition_interval => 2);
+SELECT add_dimension('test_time', ByRange('device', partition_interval => 2));
 
 SELECT hypertable_name, dimension_number, column_name FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_time';
 
-SELECT timescaledb_experimental.set_partitioning_interval('test_time', INTERVAL '1 day', 'time');
+SELECT set_partitioning_interval('test_time', INTERVAL '1 day', 'time');
 
 SELECT time_interval FROM timescaledb_information.dimensions WHERE hypertable_name = 'test_time' AND column_name = 'time';
 
