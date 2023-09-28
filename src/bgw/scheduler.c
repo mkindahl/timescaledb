@@ -879,6 +879,7 @@ scheduler_exit:
 	wait_for_all_jobs_to_shutdown();
 	check_for_stopped_and_timed_out_jobs();
 	scheduled_jobs = NIL;
+	proc_exit(ts_debug_bgw_scheduler_exit_status);
 }
 
 static void

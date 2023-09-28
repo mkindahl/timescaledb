@@ -69,25 +69,13 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
     TEST_FILES
     bgw_custom.sql
     bgw_db_scheduler.sql
+    bgw_db_scheduler_fixed.sql
     bgw_job_stat_history.sql
     bgw_job_stat_history_errors.sql
     bgw_job_stat_history_errors_permissions.sql
-    bgw_db_scheduler_fixed.sql
     bgw_reorder_drop_chunks.sql
-    scheduler_fixed.sql
-    compress_bgw_reorder_drop_chunks.sql
-    chunk_api.sql
-    chunk_merge.sql
-    chunk_utils_compression.sql
-    chunk_utils_internal.sql
-    compression_algos.sql
-    compression_bgw.sql
-    compression_ddl.sql
-    compression_hypertable.sql
-    compression_merge.sql
-    compression_indexscan.sql
-    compression_segment_meta.sql
-    compression_sorted_merge_filter.sql
+    bgw_scheduler_control.sql
+    bgw_scheduler_restart.sql
     cagg_bgw_drop_chunks.sql
     cagg_drop_chunks.sql
     cagg_dump.sql
@@ -96,24 +84,40 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
     cagg_multi.sql
     cagg_on_cagg.sql
     cagg_on_cagg_joins.sql
-    cagg_tableam.sql
     cagg_policy_run.sql
+    cagg_tableam.sql
+    chunk_api.sql
+    chunk_merge.sql
+    chunk_utils_compression.sql
+    chunk_utils_internal.sql
+    compress_bgw_reorder_drop_chunks.sql
+    compression_algos.sql
+    compression_bgw.sql
+    compression_ddl.sql
+    compression_hypertable.sql
+    compression_indexscan.sql
+    compression_merge.sql
+    compression_segment_meta.sql
+    compression_sorted_merge_filter.sql
     decompress_memory.sql
     decompress_vector_qual.sql
     exp_cagg_monthly.sql
     exp_cagg_next_gen.sql
     exp_cagg_origin.sql
     exp_cagg_timezone.sql
-    hypertable_generalization.sql
-    insert_memory_usage.sql
-    information_view_chunk_count.sql
-    read_only.sql
-    transparent_decompression_queries.sql
-    tsl_tables.sql
-    license_tsl.sql
-    fixed_schedules.sql
-    recompress_chunk_segmentwise.sql
     feature_flags.sql
+    fixed_schedules.sql
+    hypertable_generalization.sql
+    information_view_chunk_count.sql
+    insert_memory_usage.sql
+    job_errors_permissions.sql
+    license_tsl.sql
+    read_only.sql
+    recompress_chunk_segmentwise.sql
+    scheduler_fixed.sql
+    transparent_decompression_queries.sql
+    troubleshooting_job_errors.sql
+    tsl_tables.sql
     vector_agg_default.sql
     vector_agg_memory.sql
     vector_agg_segmentby.sql)
@@ -181,6 +185,7 @@ set(SOLO_TESTS
     # log level.
     bgw_custom
     bgw_scheduler_control
+    bgw_scheduler_restart
     bgw_db_scheduler
     bgw_job_stat_history_errors_permissions
     bgw_job_stat_history_errors

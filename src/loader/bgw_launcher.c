@@ -23,6 +23,7 @@
 #include <access/htup_details.h>
 #include <access/xact.h>
 #include <catalog/pg_database.h>
+#include <utils/guc.h>
 #include <utils/snapmgr.h>
 
 /* and checking db list for whether we're in a template*/
@@ -40,11 +41,15 @@
 /* for allocating the htab storage */
 #include <utils/memutils.h>
 
+#include <lib/ilist.h>
+#include <postmaster/bgworker_internals.h>
+
 /* for getting settings correct before loading the versioned scheduler */
 #include "catalog/pg_db_role_setting.h"
 
 #include "../compat/compat.h"
 #include "../extension_constants.h"
+#include "../utils.h"
 #include "bgw_counter.h"
 #include "bgw_launcher.h"
 #include "bgw_message_queue.h"
@@ -83,6 +88,8 @@ typedef enum SchedulerState
 #endif
 
 static volatile sig_atomic_t got_SIGHUP = false;
+
+int ts_guc_bgw_scheduler_restart_time_sec = BGW_DEFAULT_RESTART_INTERVAL;
 
 static void
 launcher_sighup(SIGNAL_ARGS)
@@ -124,6 +131,7 @@ typedef struct DbHashEntry
 } DbHashEntry;
 
 static void scheduler_state_trans_enabled_to_allocated(DbHashEntry *entry);
+static void scheduler_modify_state(DbHashEntry *entry, SchedulerState new_state);
 
 static void
 bgw_on_postmaster_death(void)
@@ -238,13 +246,27 @@ terminate_background_worker(BackgroundWorkerHandle *handle)
 }
 
 extern void
-ts_bgw_cluster_launcher_register(void)
+ts_bgw_cluster_launcher_init(void)
 {
 	BackgroundWorker worker;
 
+	DefineCustomIntVariable(/* name= */ MAKE_EXTOPTION("bgw_scheduler_restart_time"),
+							/* short_desc= */ "Restart time for scheduler in seconds",
+							/* long_desc= */
+							"The number of seconds until the scheduler restart on failure.",
+							/* valueAddr= */ &ts_guc_bgw_scheduler_restart_time_sec,
+							/* bootValue= */ BGW_DEFAULT_RESTART_INTERVAL,
+							/* minValue= */ 1,
+							/* maxValue= */ 3600,
+							/* context= */ PGC_SIGHUP,
+							/* flags= */ GUC_UNIT_S,
+							/* check_hook= */ NULL,
+							/* assign_hook= */ NULL,
+							/* show_hook= */ NULL);
+
 	memset(&worker, 0, sizeof(worker));
 	/* set up worker settings for our main worker */
-	snprintf(worker.bgw_name, BGW_MAXLEN, "TimescaleDB Background Worker Launcher");
+	snprintf(worker.bgw_name, BGW_MAXLEN, TS_BGW_TYPE_LAUNCHER);
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_restart_time = BGW_LAUNCHER_RESTART_TIME_S;
 
@@ -274,9 +296,10 @@ register_entrypoint_for_db(Oid db_id, VirtualTransactionId vxid, BackgroundWorke
 	BackgroundWorker worker;
 
 	memset(&worker, 0, sizeof(worker));
-	snprintf(worker.bgw_name, BGW_MAXLEN, "TimescaleDB Background Worker Scheduler");
+	snprintf(worker.bgw_type, BGW_MAXLEN, TS_BGW_TYPE_SCHEDULER);
+	snprintf(worker.bgw_name, BGW_MAXLEN, "%s for database %d", TS_BGW_TYPE_SCHEDULER, db_id);
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
-	worker.bgw_restart_time = BGW_NEVER_RESTART;
+	worker.bgw_restart_time = ts_guc_bgw_scheduler_restart_time_sec,
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	snprintf(worker.bgw_library_name, BGW_MAXLEN, EXTENSION_NAME);
 	snprintf(worker.bgw_function_name, BGW_MAXLEN, BGW_ENTRYPOINT_FUNCNAME);
@@ -302,6 +325,20 @@ init_database_htab(void)
 					   ts_guc_max_background_workers,
 					   &info,
 					   HASH_BLOBS | HASH_CONTEXT | HASH_ELEM);
+}
+
+static DbHashEntry *
+db_hash_entry_update(HTAB *db_htab, Oid db_oid, SchedulerState state)
+{
+	bool found;
+	DbHashEntry *entry = (DbHashEntry *) hash_search(db_htab, &db_oid, HASH_FIND, &found);
+	if (!found)
+	{
+		elog(LOG, "could not find database entry for %d", db_oid);
+		return NULL;
+	}
+	scheduler_modify_state(entry, state);
+	return entry;
 }
 
 /* Insert a scheduler entry into the hash table. Correctly set entry values. */
@@ -333,14 +370,42 @@ db_hash_entry_create_if_not_exists(HTAB *db_htab, Oid db_oid)
 }
 
 /*
+ * Update the database hash table with information from the registered
+ * background worker list.
+ *
+ * This list contains background workers that are currently assigned a slot
+ * and are either running or will soon be running.
+ *
+ * In either case, we should not start new schedulers if there are old ones
+ * available from a previous launcher and they have not terminated, so we set
+ * the state to "STARTED" since it already has a slot.
+ *
+ * We do not update the state if it is terminated because the postmaster will
+ * reclaim this slot later, so we instead create a new scheduler.
+ */
+static void
+update_database_htab(HTAB *db_htab)
+{
+	slist_iter siter;
+	slist_foreach(siter, &BackgroundWorkerList)
+	{
+		RegisteredBgWorker *rw = slist_container(RegisteredBgWorker, rw_lnode, siter.cur);
+
+		/* We store the database id in the main arg for schedulers, so we can
+		 * fetch the database OID from there. */
+		if (strcmp(rw->rw_worker.bgw_type, TS_BGW_TYPE_SCHEDULER) == 0 && !rw->rw_terminate)
+			db_hash_entry_update(db_htab, rw->rw_worker.bgw_main_arg, STARTED);
+	}
+}
+
+/*
  * Model this on autovacuum.c -> get_database_list.
  *
- * Note that we are not doing
- * all the things around memory context that they do, because the hashtable
- * we're using to store db entries is automatically created in its own memory
- * context (a child of TopMemoryContext) This can get called at two different
- * times 1) when the cluster launcher starts and is looking for dbs and 2) if
- * it restarts due to a postmaster signal.
+ * Note that we are not doing all the things around memory context that they
+ * do, because the hashtable we're using to store db entries is automatically
+ * created in its own memory context (a child of TopMemoryContext) This can
+ * get called at two different times 1) when the cluster launcher starts and
+ * is looking for dbs and 2) if it restarts due to a postmaster signal.
  */
 static void
 populate_database_htab(HTAB *db_htab)
@@ -758,6 +823,7 @@ ts_bgw_cluster_launcher_main(PG_FUNCTION_ARGS)
 	*htab_storage = db_htab;
 
 	populate_database_htab(db_htab);
+	update_database_htab(db_htab);
 
 	while (true)
 	{
