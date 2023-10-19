@@ -718,7 +718,7 @@ ts_bgw_cluster_launcher_main(PG_FUNCTION_ARGS)
 	got_SIGHUP = false;
 	ProcessConfigFile(PGC_SIGHUP);
 	BackgroundWorkerUnblockSignals();
-	ereport(DEBUG1, (errmsg("TimescaleDB background worker launcher started")));
+	elog(DEBUG1, "background worker launcher started");
 
 	/* set counter back to zero on restart */
 	ts_bgw_counter_reinit();
